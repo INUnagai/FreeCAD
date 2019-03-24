@@ -1,0 +1,107 @@
+# -*- coding: utf-8 -*-
+
+import os
+import FreeCAD
+import Part
+import Mesh
+
+
+def sin60deg():
+    return (3.0)**0.5 / 2.0
+
+def isEven(num):
+    return num % 2 == 0
+
+def isOdd(num):
+    return num % 2 == 1
+
+def holePosition(holeDiamiter, holePitch, plateDiameter, margin = 5.0):
+    xList = []
+    yList = []
+
+    iNum = int((plateDiameter / holePitch + 3.0) *0.5 )
+    jNum = int((plateDiameter / (holePitch*sin60deg()) + 3.0) *0.5 )
+
+    for j in range(-jNum, jNum+1):
+        for i in range(-iNum, iNum+1):
+            x = float(i) * holePitch + holePitch * 0.5 * isOdd(j)
+            y = float(j) * holePitch * sin60deg()
+            r = (x*x + y*y)**0.5
+            if (r + holeDiamiter*0.5) <= plateDiameter*0.5 - margin:
+                xList.append(x)
+                yList.append(y)
+
+    return xList, yList
+
+
+def createPlate(holeDiamiter, holePitch, plateDiameter, palteThickness, margin=5.0):
+    xList, yList = holePosition(holeDiamiter, holePitch, plateDiameter, margin)
+
+    App.newDocument("hole_metal")
+    doc = FreeCAD.getDocument("hole_metal")
+
+    App.ActiveDocument.addObject("Part::Cylinder","plate0000")
+    doc.getObject("plate0000").Radius = str(plateDiameter/2.0) + ' mm'
+    doc.getObject("plate0000").Height = str(palteThickness) + ' mm'
+
+    for i in range(len(xList)):
+
+        x = xList[i]
+        y = yList[i]
+        z = -1.0
+        position = App.Vector(x, y, z)
+
+        axis = App.Rotation(App.Vector(0,0,1),0)
+
+        n = i + 1
+
+        holeObjName = "hole" + str(n).zfill(4)
+        App.ActiveDocument.addObject("Part::Cylinder", holeObjName)
+        doc.getObject(holeObjName).Placement = App.Placement(position, axis)
+        doc.getObject(holeObjName).Radius = str(holeDiamiter/2.0) + ' mm'
+
+        # boolean
+        plateObjName = "plate" + str(n).zfill(4)
+        basePlateObjName = "plate" + str(n-1).zfill(4)
+        App.activeDocument().addObject("Part::Cut",plateObjName)
+        doc.getObject(plateObjName).Base = doc.getObject(basePlateObjName)
+        doc.getObject(plateObjName).Tool = doc.getObject(holeObjName)
+
+    App.ActiveDocument.recompute()
+
+    Gui.ActiveDocument=Gui.getDocument("hole_metal")
+    Gui.SendMsgToActiveView("ViewFit")
+
+    fileName = 'plate_' + str(len(xList)) + 'holes.ast'
+    plateObj = doc.getObject(plateObjName)
+
+    return plateObj, fileName
+
+
+def saveSTL(obj, fileName='hoge.ast', dirName="C:/Users/taro/Desktop"):
+    path = os.path.join(dirName, fileName)
+
+    __objs__=[]
+    __objs__.append(obj)
+    Mesh.export(__objs__, path)
+    del __objs__
+
+    root, ext = os.path.splitext(path)
+    os.rename(path, root+'.stl')
+    return True
+
+
+
+# hole parameter
+holePitch = 40.0
+holeDiamiter = 30.0
+
+# plate parameter
+plateDiameter = 300.0
+palteThickness = 3.6
+
+margin = 10.0
+
+
+plateObj, fileName = createPlate(holeDiamiter, holePitch, plateDiameter, palteThickness, margin)
+saveSTL(plateObj, fileName)
